@@ -40,6 +40,26 @@ ADMIN_IDS=111111111,222222222
 TIMEZONE=Europe/Moscow
 ```
 
+Чтобы включить backend-владение профилями, мероприятиями, регистрациями,
+посещаемостью и отзывами, добавьте в тот же `.env` параметры из варианта ниже.
+
+Если backend и bot запускаются отдельными Compose-проектами, как в текущей
+структуре репозитория, на Docker Desktop укажите адрес опубликованного порта
+backend:
+
+```dotenv
+BACKEND_URL=http://host.docker.internal:8080
+BOT_SERVICE_TOKEN=тот_же_секрет_что_и_в_backend
+```
+
+Если позже оба сервиса будут подключены к одной Docker-сети интеграционного
+Compose, адресом будет `http://backend:8080`.
+
+Оба значения должны быть заданы вместе. Перед переключением остановите бота,
+запустите мигратор backend и выполните read-only dry-run, затем примените
+перенос с явным `--apply`. SQLite остаётся рабочей для публикаций, media,
+delivery, AI-истории и временных диалогов.
+
 Остальные параметры имеют безопасные значения по умолчанию. Не добавляйте `.env`
 в Git: в нём находится токен Telegram-бота и, при включении AI, ключ DeepSeek.
 
@@ -48,9 +68,44 @@ TIMEZONE=Europe/Moscow
 
 ## Первый запуск
 
+Для запуска backend и bot в общей Docker-сети используйте корневой Compose из
+родительского репозитория:
+
+```bash
+docker compose up -d --build --remove-orphans
+```
+
+Он сам дождётся миграций SQLite и PostgreSQL, выполнит идемпотентный импорт и
+запустит bot только после успешной проверки backend. Отдельный Compose ниже
+нужен для автономного запуска только bot.
+
 ```bash
 docker compose -f bot/docker-compose.yml up -d --build
 ```
+
+При включённом backend сначала поднимите его отдельным Compose и убедитесь, что
+`GET /healthz` и `GET /readyz` возвращают `200`, после чего пересоберите bot.
+
+Из корня платформы это выглядит так:
+
+```bash
+docker compose -f backend/docker-compose.yml --env-file backend/.env up -d --build
+curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8080/readyz
+docker compose -f bot/docker-compose.yml up -d --build
+```
+
+Если backend ещё пустой, выполните его импортёр до запуска bot:
+
+```bash
+cd backend
+go run ./cmd/import-legacy --sqlite ../data/bot.sqlite3 --json
+go run ./cmd/import-legacy --sqlite ../data/bot.sqlite3 --apply --database-url "$DATABASE_URL"
+cd ..
+```
+
+На Windows PowerShell вместо `$DATABASE_URL` можно указать тот же URL явно из
+`backend/.env`.
 
 Compose сначала выполняет одноразовый контейнер `migrate`. Он применяет
 недостающие миграции SQLite; для существующей базы до миграции создаётся копия в

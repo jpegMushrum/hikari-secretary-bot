@@ -516,14 +516,32 @@ class Database:
                 )).fetchone()
                 if not registration:
                     return False
-            await db.execute(
-                """INSERT INTO feedback_flows(user_id,post_id,updated_at) VALUES(?,?,?)
-                   ON CONFLICT(user_id) DO UPDATE SET
-                       post_id=excluded.post_id,updated_at=excluded.updated_at""",
-                (user_id, post_id, utc_now().isoformat()),
-            )
+            await self._upsert_feedback_flow(db, user_id, post_id)
             await db.commit()
             return True
+
+    async def begin_feedback_flow_unchecked(
+        self, user_id: int, post_id: int | None
+    ) -> bool:
+        """Start a feedback flow when attendance was validated by another store.
+
+        The backend is authoritative in the service deployment, while this
+        SQLite database only stores the transient dialog state.  Do not require
+        a mirrored legacy registration row here.
+        """
+        async with self.connect() as db:
+            await self._upsert_feedback_flow(db, user_id, post_id)
+            await db.commit()
+            return True
+
+    @staticmethod
+    async def _upsert_feedback_flow(db, user_id: int, post_id: int | None) -> None:
+        await db.execute(
+            """INSERT INTO feedback_flows(user_id,post_id,updated_at) VALUES(?,?,?)
+               ON CONFLICT(user_id) DO UPDATE SET
+                   post_id=excluded.post_id,updated_at=excluded.updated_at""",
+            (user_id, post_id, utc_now().isoformat()),
+        )
 
     async def feedback_flow(self, user_id: int) -> dict | None:
         async with self.connect() as db:

@@ -852,6 +852,9 @@ class RegistrationHandlers:
         if await self.context.db.profile_edit_flow(callback.from_user.id):
             await callback.answer("Сначала завершите настройку профиля", show_alert=True)
             return
+        await self.context.db.update_telegram_identity(
+            callback.from_user.id, *telegram_identity_values(callback.from_user)
+        )
         await self.context.db.begin_feedback_flow(callback.from_user.id, None)
         await callback.message.answer(
             "Напишите отзыв одним сообщением.\n\n"

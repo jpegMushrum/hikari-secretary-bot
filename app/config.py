@@ -52,6 +52,8 @@ class Settings:
     deepseek_base_url: str
     deepseek_timeout_seconds: int
     ai_topics: AiTopicSettings
+    backend_url: str | None
+    backend_service_token: str | None
 
 
 def _required(name: str) -> str:
@@ -158,6 +160,13 @@ def load_settings() -> Settings:
             "Для автоматической публикации необходимо задать DEEPSEEK_API_KEY"
         )
 
+    backend_url = os.getenv("BACKEND_URL", "").strip().rstrip("/") or None
+    backend_service_token = os.getenv("BOT_SERVICE_TOKEN", "").strip() or None
+    if bool(backend_url) != bool(backend_service_token):
+        raise ValueError(
+            "BACKEND_URL и BOT_SERVICE_TOKEN должны быть заданы вместе"
+        )
+
     def bounded_int(name: str, default: int, upper: int) -> int:
         try:
             value = int(os.getenv(name, str(default)))
@@ -193,4 +202,6 @@ def load_settings() -> Settings:
             vocabulary_count=bounded_int("AI_TOPIC_VOCABULARY_COUNT", 10, 20),
             grammar_count=bounded_int("AI_TOPIC_GRAMMAR_COUNT", 3, 8),
         ),
+        backend_url=backend_url,
+        backend_service_token=backend_service_token,
     )

@@ -28,6 +28,11 @@ class SchedulerWorker:
                 if delivery:
                     await self._deliver(delivery)
                     continue
+                reconcile_published_events = getattr(
+                    self.context.db, "reconcile_published_events", None
+                )
+                if reconcile_published_events is not None:
+                    await reconcile_published_events()
                 await self._send_due_reminders()
                 await self._send_due_attendance_prompts()
                 await self._send_terminal_notifications()
@@ -50,6 +55,9 @@ class SchedulerWorker:
                 )
             external_id = await self.publisher.publish(delivery, registration_url)
             await self.context.db.delivery_succeeded(delivery.id, external_id)
+            mark_event_published = getattr(self.context.db, "mark_event_published", None)
+            if delivery.event_enabled and mark_event_published is not None:
+                await mark_event_published(delivery.post_id)
             log.info(
                 "Delivery succeeded: delivery_id=%s post_id=%s external_id=%s",
                 delivery.id, delivery.post_id, external_id,

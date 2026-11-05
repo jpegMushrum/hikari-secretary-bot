@@ -3,16 +3,19 @@ from __future__ import annotations
 import asyncio
 import logging
 
+import aiohttp
 from aiogram import Bot, Dispatcher, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     BotCommand,
     BotCommandScopeAllPrivateChats,
     BotCommandScopeChat,
+    ErrorEvent,
     MenuButtonCommands,
 )
 
 from .access import AdminAccess
+from .backend import BackendClient, BackendDatabase, BackendError
 from .config import Settings
 from .db import Database
 from .handlers.core import CoreHandlers
@@ -38,9 +41,18 @@ class SecretaryBot:
 
     def __init__(self, settings: Settings):
         bot = Bot(settings.telegram_bot_token)
-        database = Database(settings.database_path)
+        local_database = Database(settings.database_path)
+        database = (
+            BackendDatabase(
+                local_database,
+                BackendClient(settings.backend_url, settings.backend_service_token),
+            )
+            if settings.backend_url and settings.backend_service_token
+            else local_database
+        )
         self.context = AppContext(settings=settings, bot=bot, db=database)
         self.dispatcher = Dispatcher()
+        self.dispatcher.errors.register(self._handle_backend_error)
         self.router = Router()
 
         access = AdminAccess(self.context)
@@ -104,7 +116,11 @@ class SecretaryBot:
         return self.context.db
 
     async def run(self) -> None:
-        log.info("Initializing database: path=%s", self.settings.database_path)
+        log.info(
+            "Initializing database: path=%s backend=%s",
+            self.settings.database_path,
+            bool(self.settings.backend_url),
+        )
         await self.db.initialize()
         me = await self.bot.get_me()
         self.context.bot_username = me.username
@@ -128,7 +144,32 @@ class SecretaryBot:
             for task in worker_tasks:
                 task.cancel()
             await asyncio.gather(*worker_tasks, return_exceptions=True)
+            close = getattr(self.db, "close", None)
+            if close is not None:
+                await close()
             await self.bot.session.close()
+
+    async def _handle_backend_error(self, event: ErrorEvent) -> bool:
+        exception = event.exception
+        if not isinstance(exception, (BackendError, aiohttp.ClientError, asyncio.TimeoutError)):
+            return False
+
+        if isinstance(exception, BackendError) and exception.code == "capacity_limit":
+            text = "Достигнут лимит backend. Попробуйте ещё раз после освобождения места."
+        else:
+            text = "Backend временно недоступен. Попробуйте ещё раз через несколько секунд."
+
+        update = event.update
+        if update.callback_query:
+            try:
+                await update.callback_query.answer(text, show_alert=True)
+                return True
+            except TelegramBadRequest:
+                pass
+        if update.message:
+            await update.message.answer(text)
+            return True
+        return True
 
     async def _configure_telegram_menu(self) -> None:
         user_commands = [
