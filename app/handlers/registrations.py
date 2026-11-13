@@ -581,6 +581,12 @@ class RegistrationHandlers:
         if not event:
             await send("Регистрация на это мероприятие недоступна.")
             return
+        # A registration flow is keyed by telegram_identities in the backend.
+        # Create or refresh that technical identity before storing the first
+        # step, including for a user who has not filled in a profile yet.
+        await self.context.db.update_telegram_identity(
+            user_id, *telegram_identity_values(user)
+        )
         current = await self.context.db.registration(user_id, post_id)
         if current and current["status"] == "registered":
             await send(
