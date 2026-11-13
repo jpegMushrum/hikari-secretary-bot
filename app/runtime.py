@@ -8,7 +8,7 @@ from aiogram import Bot
 from aiogram.types import Message
 
 from .config import Settings
-from .db import Database
+from .backend import BackendDatabase
 from .services.daily_topics import DailyTopic
 
 
@@ -45,6 +45,6 @@ class RuntimeState:
 class AppContext:
     settings: Settings
     bot: Bot
-    db: Database
+    db: BackendDatabase
     state: RuntimeState = field(default_factory=RuntimeState)
     bot_username: str | None = None

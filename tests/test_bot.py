@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from app.access import AdminAccess
 from app.handlers.registrations import RegistrationHandlers
-from app.db import Page
+from app.contracts import Page
 from app.keyboards import (
     admin_statistics_keyboard,
     feedback_offer_keyboard,

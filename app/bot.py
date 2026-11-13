@@ -17,7 +17,6 @@ from aiogram.types import (
 from .access import AdminAccess
 from .backend import BackendClient, BackendDatabase, BackendError
 from .config import Settings
-from .db import Database
 from .handlers.core import CoreHandlers
 from .handlers.ai_topics import AiTopicHandlers
 from .handlers.inbox import InboxHandlers
@@ -41,14 +40,10 @@ class SecretaryBot:
 
     def __init__(self, settings: Settings):
         bot = Bot(settings.telegram_bot_token)
-        local_database = Database(settings.database_path)
-        database = (
-            BackendDatabase(
-                local_database,
-                BackendClient(settings.backend_url, settings.backend_service_token),
-            )
-            if settings.backend_url and settings.backend_service_token
-            else local_database
+        if not settings.backend_url or not settings.backend_service_token:
+            raise ValueError("Для запуска бота требуется BACKEND_URL и BOT_SERVICE_TOKEN")
+        database = BackendDatabase(
+            BackendClient(settings.backend_url, settings.backend_service_token)
         )
         self.context = AppContext(settings=settings, bot=bot, db=database)
         self.dispatcher = Dispatcher()
@@ -57,7 +52,7 @@ class SecretaryBot:
 
         access = AdminAccess(self.context)
         publication_service = PublicationService(database, settings.targets)
-        topic_repository = DailyTopicRepository(database)
+        topic_repository = DailyTopicRepository(database.client)
         topic_service: DailyTopicService | None = None
         if settings.deepseek_api_key and settings.ai_topics.target:
             topic_service = DailyTopicService(
@@ -112,14 +107,13 @@ class SecretaryBot:
         return self.context.bot
 
     @property
-    def db(self) -> Database:
+    def db(self) -> BackendDatabase:
         return self.context.db
 
     async def run(self) -> None:
         log.info(
-            "Initializing database: path=%s backend=%s",
-            self.settings.database_path,
-            bool(self.settings.backend_url),
+            "Initializing backend client: backend=%s",
+            self.settings.backend_url,
         )
         await self.db.initialize()
         me = await self.bot.get_me()

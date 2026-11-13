@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from app.db import Delivery
+from app.contracts import Delivery
 from app.presentation import friendly_delivery_error
 from app.publishers import TelegramPublisher
 

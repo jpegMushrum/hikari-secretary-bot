@@ -41,7 +41,6 @@ class Settings:
     admin_ids: frozenset[int]
     timezone: ZoneInfo
     timezone_name: str
-    database_path: Path
     media_dir: Path
     targets: tuple[Target, ...]
     scheduler_interval_seconds: int
@@ -112,9 +111,7 @@ def load_settings() -> Settings:
         raise ValueError(f"Неизвестный часовой пояс: {timezone_name}") from exc
 
     targets_path = Path(os.getenv("TARGETS_PATH", "/app/targets.json"))
-    database_path = Path(os.getenv("DATABASE_PATH", "/app/data/bot.sqlite3"))
     media_dir = Path(os.getenv("MEDIA_DIR", "/app/data/media"))
-    database_path.parent.mkdir(parents=True, exist_ok=True)
     media_dir.mkdir(parents=True, exist_ok=True)
 
     reminder_options_raw = os.getenv(
@@ -181,7 +178,6 @@ def load_settings() -> Settings:
         admin_ids=admin_ids,
         timezone=timezone,
         timezone_name=timezone_name,
-        database_path=database_path,
         media_dir=media_dir,
         targets=targets,
         scheduler_interval_seconds=max(1, int(os.getenv("SCHEDULER_INTERVAL_SECONDS", "5"))),

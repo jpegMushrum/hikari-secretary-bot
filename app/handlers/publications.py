@@ -10,7 +10,7 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
 from ..access import AdminAccess
-from ..db import CapacityLimitReached
+from ..contracts import CapacityLimitReached
 from ..formatting import (
     entities_to_json,
     format_local,

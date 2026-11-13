@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
 
-from .db import CapacityLimitReached, Database, Page
+from .contracts import CapacityLimitReached, Delivery, Page
 
 
 class BackendError(RuntimeError):
@@ -57,30 +56,16 @@ class BackendClient:
 
 
 class BackendDatabase:
-    """Remote first-slice storage with local SQLite for publishing and flows.
+    """Backend API facade. The bot never opens the application database."""
 
-    SQLite remains the owner of posts, media, deliveries, AI jobs and transient
-    dialogs. The completed participant/event/registration/feedback state is
-    served by the Go backend.
-    """
-
-    def __init__(self, local: Database, client: BackendClient):
-        self.local = local
+    def __init__(self, client: BackendClient):
         self.client = client
 
     async def initialize(self) -> None:
-        await self.local.initialize()
+        await self.client.request("POST", "/internal/bot/v1/deliveries/recover")
 
     async def close(self) -> None:
         await self.client.close()
-
-    def __getattr__(self, name: str):
-        return getattr(self.local, name)
-
-    @asynccontextmanager
-    async def connect(self):
-        async with self.local.connect() as connection:
-            yield connection
 
     async def profile(self, user_id: int) -> dict | None:
         try:
@@ -272,7 +257,7 @@ class BackendDatabase:
             if error.status >= 500:
                 raise
             return False
-        return await self.local.set_event(post_id, title, starts_at, ends_at)
+        return True
 
     async def remove_event(self, post_id: int) -> bool:
         try:
@@ -283,7 +268,7 @@ class BackendDatabase:
             if error.status >= 500:
                 raise
             return False
-        return await self.local.remove_event(post_id)
+        return True
 
     async def mark_event_published(self, post_id: int) -> None:
         try:
@@ -294,22 +279,6 @@ class BackendDatabase:
             # Delivery itself is already recorded locally. The scheduler's
             # reconciliation pass will retry this idempotent state update.
             return
-
-    async def reconcile_published_events(self) -> None:
-        """Retry backend publication markers after a transient API failure."""
-        async with self.local.connect() as connection:
-            rows = await (
-                await connection.execute(
-                    """SELECT DISTINCT d.post_id
-                       FROM deliveries d
-                       JOIN events e ON e.post_id=d.post_id
-                       WHERE d.platform='telegram' AND d.status='sent'
-                         AND e.status='active' AND e.starts_at>?""",
-                    (datetime.now(timezone.utc).isoformat(),),
-                )
-            ).fetchall()
-        for row in rows:
-            await self.mark_event_published(int(row["post_id"]))
 
     async def active_events_limit_reached(self) -> bool:
         result = await self.client.request(
@@ -397,7 +366,6 @@ class BackendDatabase:
             if error.status == 404:
                 return None
             raise
-        await self.local.cancel_event(post_id)
         return participants
 
     async def event_registrations_page(
@@ -507,6 +475,67 @@ class BackendDatabase:
         )
         await self.delete_feedback_flow(user_id)
         return {"id": result["id"], "post_id": post_id}
+
+    async def create_post(self, creator_id: int, text: str, entities: list[dict], media_paths: list[str], rich_message: dict | None = None, *, source: str = "admin", source_key: str | None = None) -> int:
+        result = await self.client.request("POST", "/internal/bot/v1/publications", json={"creator_id": creator_id, "text": text, "entities": entities, "media_paths": media_paths, "rich_message": rich_message, "source": source, "source_key": source_key or ""})
+        return int(result["id"])
+
+    async def create_scheduled_post(self, creator_id: int, text: str, entities: list[dict], media_paths: list[str], targets: list[dict], scheduled_at: datetime, *, source: str, source_key: str | None = None, rich_message: dict | None = None) -> int:
+        try:
+            result = await self.client.request("POST", "/internal/bot/v1/publications/scheduled", json={"creator_id": creator_id, "text": text, "entities": entities, "media_paths": media_paths, "rich_message": rich_message, "source": source, "source_key": source_key or "", "targets": targets, "scheduled_at": scheduled_at.astimezone(timezone.utc).isoformat()})
+        except BackendError as error:
+            if error.code == "capacity_limit":
+                raise CapacityLimitReached(5, "публикаций в очереди") from error
+            raise
+        return int(result["id"])
+
+    async def post(self, post_id: int) -> dict | None:
+        try:
+            return await self.client.request("GET", f"/internal/bot/v1/publications/{post_id}")
+        except BackendError as error:
+            if error.status == 404:
+                return None
+            raise
+
+    async def toggle_delivery(self, post_id: int, target_key: str, target_name: str, destination: str, message_thread_id: int | None) -> None:
+        await self.client.request("POST", f"/internal/bot/v1/publications/{post_id}/targets/toggle", json={"key": target_key, "name": target_name, "destination": destination, "message_thread_id": message_thread_id})
+
+    async def schedule(self, post_id: int, when: datetime) -> bool:
+        try:
+            result = await self.client.request("POST", f"/internal/bot/v1/publications/{post_id}/schedule", json={"scheduled_at": when.astimezone(timezone.utc).isoformat()})
+        except BackendError as error:
+            if error.code == "capacity_limit":
+                raise CapacityLimitReached(5, "публикаций в очереди") from error
+            raise
+        return bool(result["scheduled"])
+
+    async def pending_posts_limit_reached(self) -> bool:
+        return len(await self.queue(limit=5)) >= 5
+
+    async def queue(self, limit: int = 20) -> list[dict]:
+        return await self.client.request("GET", "/internal/bot/v1/publications", params={"limit": limit})
+
+    async def cancel(self, post_id: int) -> bool:
+        result = await self.client.request("POST", f"/internal/bot/v1/publications/{post_id}/cancel")
+        return bool(result["cancelled"])
+
+    async def claim_due(self) -> Delivery | None:
+        result = await self.client.request("POST", "/internal/bot/v1/deliveries/claim")
+        if result is None:
+            return None
+        return Delivery(id=int(result["id"]), post_id=int(result["publication_id"]), creator_id=int(result["creator_telegram_id"]), target_key=result["target_key"], target_name=result["target_name"], destination=result["destination"], message_thread_id=result.get("message_thread_id"), text=result["text"], entities=result.get("entities") or [], rich_message=result.get("rich_message"), media_paths=result.get("media_paths") or [], attempts=int(result["attempts"]), event_enabled=bool(result.get("event_enabled")))
+
+    async def delivery_succeeded(self, delivery_id: int, external_id: str) -> None:
+        await self.client.request("POST", f"/internal/bot/v1/deliveries/{delivery_id}/succeeded", json={"external_id": external_id})
+
+    async def delivery_failed(self, delivery_id: int, error: str, max_attempts: int) -> None:
+        await self.client.request("POST", f"/internal/bot/v1/deliveries/{delivery_id}/failed", json={"reason": error, "max_attempts": max_attempts})
+
+    async def terminal_notifications(self) -> list[dict]:
+        return await self.client.request("GET", "/internal/bot/v1/publication-notifications")
+
+    async def mark_notified(self, post_id: int) -> None:
+        await self.client.request("POST", f"/internal/bot/v1/publication-notifications/{post_id}/sent")
 
     @staticmethod
     def _page(payload: dict) -> Page:

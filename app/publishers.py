@@ -5,7 +5,7 @@ import logging
 from aiogram import Bot
 from aiogram.types import FSInputFile, InputMediaPhoto
 
-from .db import Delivery
+from .contracts import Delivery
 from .formatting import entities_from_json, rich_message_from_json
 
 

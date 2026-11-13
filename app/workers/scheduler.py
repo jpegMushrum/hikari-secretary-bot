@@ -164,6 +164,17 @@ class SchedulerWorker:
                 post = await self.context.db.post(notice["id"])
                 if post:
                     remove_media(post["media_paths"])
+            except (TelegramBadRequest, TelegramForbiddenError) as error:
+                # This notification cannot be delivered: the recipient may no
+                # longer have a private chat with this bot. It is terminal,
+                # so acknowledge it rather than retrying and flooding stdout.
+                log.warning(
+                    "Terminal publication notification discarded: post_id=%s creator_id=%s error=%s",
+                    notice["id"],
+                    notice["creator_id"],
+                    error,
+                )
+                await self.context.db.mark_notified(notice["id"])
             except Exception:
                 log.exception("Could not notify admin")
 

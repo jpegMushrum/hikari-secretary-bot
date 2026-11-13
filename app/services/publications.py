@@ -3,13 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 
 from ..config import Target
-from ..db import Database, DeliveryTarget
+from ..backend import BackendDatabase
 
 
 class PublicationService:
     """Application boundary for creating and scheduling publications."""
 
-    def __init__(self, db: Database, targets: tuple[Target, ...]):
+    def __init__(self, db: BackendDatabase, targets: tuple[Target, ...]):
         self.db = db
         self.targets = {target.key: target for target in targets}
 
@@ -53,28 +53,21 @@ class PublicationService:
         unknown = [key for key in target_keys if key not in self.targets]
         if unknown:
             raise ValueError(f"Неизвестные цели публикации: {', '.join(unknown)}")
-        selected = tuple(
-            DeliveryTarget(
-                key=self.targets[key].key,
-                name=self.targets[key].name,
-                destination=self.targets[key].destination,
-                message_thread_id=self.targets[key].message_thread_id,
-            )
+        targets = [
+            {
+                "key": self.targets[key].key,
+                "name": self.targets[key].name,
+                "destination": self.targets[key].destination,
+                "message_thread_id": self.targets[key].message_thread_id,
+            }
             for key in dict.fromkeys(target_keys)
-        )
+        ]
         return await self.db.create_scheduled_post(
-            creator_id,
-            text,
-            entities or [],
-            media_paths or [],
-            selected,
-            scheduled_at,
-            source=source,
-            source_key=idempotency_key,
-            rich_message=rich_message,
+            creator_id, text, entities or [], media_paths or [], targets, scheduled_at,
+            source=source, source_key=idempotency_key, rich_message=rich_message,
         )
 
     async def replace_scheduled(
         self, post_id: int, *, text: str, rich_message: dict
     ) -> bool:
-        return await self.db.replace_scheduled_post(post_id, text, rich_message)
+        return False

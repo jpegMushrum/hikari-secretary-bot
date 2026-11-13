@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 
 from .bot import SecretaryBot
 from .config import load_settings
@@ -12,17 +13,18 @@ def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        stream=sys.stdout,
     )
     settings = load_settings()
     log.info(
         "Configuration loaded: admins=%s targets=%s timezone=%s scheduler_interval=%ss "
-        "reminder_options=%s database=%s",
+        "reminder_options=%s backend_api=%s",
         len(settings.admin_ids),
         len(settings.targets),
         settings.timezone_name,
         settings.scheduler_interval_seconds,
         settings.reminder_options_minutes,
-        settings.database_path,
+        settings.backend_url,
     )
     log.info(
         "AI topic configuration: enabled=%s target=%s auto_publish_time=%s questions=%s "

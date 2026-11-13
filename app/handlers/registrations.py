@@ -9,7 +9,7 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message, User
 
 from ..access import AdminAccess
-from ..db import EVENT_REGISTRATION_SORTS, PERSON_STATISTICS_SORTS
+from ..contracts import EVENT_REGISTRATION_SORTS, PERSON_STATISTICS_SORTS
 from ..formatting import format_local
 from ..keyboards import (
     admin_feedback_detail_keyboard,
