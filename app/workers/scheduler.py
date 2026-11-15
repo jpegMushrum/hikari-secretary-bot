@@ -28,6 +28,10 @@ class SchedulerWorker:
                 if delivery:
                     await self._deliver(delivery)
                     continue
+                notification = await self.context.db.claim_notification()
+                if notification:
+                    await self._deliver_notification(notification)
+                    continue
                 reconcile_published_events = getattr(
                     self.context.db, "reconcile_published_events", None
                 )
@@ -86,6 +90,24 @@ class SchedulerWorker:
                     f"Бот повторит отправку.\nПричина: {reason}"
                 )
             await self._notify_admin(delivery.creator_id, text)
+
+    async def _deliver_notification(self, notification: dict) -> None:
+        try:
+            if notification["topic"] != "event.cancelled":
+                raise RuntimeError(f"Unsupported notification topic: {notification['topic']}")
+            await self.context.bot.send_message(
+                int(notification["telegram_user_id"]),
+                f"Мероприятие «{notification['title']}» отменено организаторами.",
+            )
+            await self.context.db.notification_succeeded(int(notification["id"]))
+        except Exception as exc:
+            log.exception("Outbox notification %s failed", notification.get("id"))
+            permanent = isinstance(exc, (TelegramBadRequest, TelegramForbiddenError))
+            await self.context.db.notification_failed(
+                int(notification["id"]),
+                str(exc),
+                1 if permanent else self.context.settings.max_delivery_attempts,
+            )
 
     async def _send_due_reminders(self) -> None:
         reminders = await self.context.db.due_reminders()

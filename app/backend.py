@@ -550,6 +550,26 @@ class BackendDatabase:
             f"/internal/bot/v1/ai-topics/failure-notifications/{job_id}/sent",
         )
 
+    async def claim_notification(self) -> dict | None:
+        return await self.client.request(
+            "POST", "/internal/bot/v1/outbox/notifications/claim"
+        )
+
+    async def notification_succeeded(self, notification_id: int) -> None:
+        await self.client.request(
+            "POST",
+            f"/internal/bot/v1/outbox/notifications/{notification_id}/succeeded",
+        )
+
+    async def notification_failed(
+        self, notification_id: int, reason: str, max_attempts: int
+    ) -> None:
+        await self.client.request(
+            "POST",
+            f"/internal/bot/v1/outbox/notifications/{notification_id}/failed",
+            json={"reason": reason[:1000], "max_attempts": max_attempts},
+        )
+
     @staticmethod
     def _page(payload: dict) -> Page:
         return Page(
