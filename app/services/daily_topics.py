@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Protocol, Sequence
-
 from aiogram.types import InputRichMessage
 
-from .publications import PublicationService
+from ..backend import BackendClient
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,14 +20,6 @@ class GrammarPoint:
     explanation: str
     example: str
     translation: str
-
-
-@dataclass(frozen=True, slots=True)
-class TopicHistoryItem:
-    conversation_topic: str
-    vocabulary_theme: str
-    grammar_patterns: tuple[str, ...] = ()
-    vocabulary_words: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,16 +40,6 @@ class DailyTopic:
 
     def as_json_value(self) -> dict:
         return asdict(self)
-
-
-class DailyTopicProvider(Protocol):
-    """Port implemented by a concrete provider such as DeepSeek."""
-
-    async def generate(
-        self,
-        history: Sequence[TopicHistoryItem],
-        options: TopicGenerationOptions | None = None,
-    ) -> DailyTopic: ...
 
 
 class DailyTopicRenderer:
@@ -177,56 +157,41 @@ class DailyTopicRenderer:
 
 
 class DailyTopicService:
-    """Generates a validated topic and submits it to the publication queue."""
+    """Thin Telegram adapter for learning-content operations owned by backend."""
 
     def __init__(
         self,
-        provider: DailyTopicProvider,
-        publications: PublicationService,
-        target_key: str,
+        client: BackendClient,
         renderer: DailyTopicRenderer | None = None,
     ):
-        if not target_key.strip():
-            raise ValueError("Для AI-тем не задана цель публикации")
-        self.provider = provider
-        self.publications = publications
-        self.target_key = target_key
+        self.client = client
         self.renderer = renderer or DailyTopicRenderer()
+        self.available = False
 
-    async def generate_and_schedule(
-        self,
-        *,
-        history: Sequence[TopicHistoryItem],
-        creator_id: int,
-        scheduled_at: datetime,
-        idempotency_key: str,
-        options: TopicGenerationOptions | None = None,
-    ) -> tuple[int, DailyTopic]:
-        topic = await self.generate(history, options)
-        post_id = await self.schedule(
-            topic,
-            creator_id=creator_id,
-            scheduled_at=scheduled_at,
-            idempotency_key=idempotency_key,
+    async def refresh_capabilities(self) -> None:
+        value = await self.client.request(
+            "GET", "/internal/bot/v1/ai-topics/capabilities"
         )
-        return post_id, topic
+        self.available = bool(value.get("enabled"))
 
     async def generate(
         self,
-        history: Sequence[TopicHistoryItem],
         options: TopicGenerationOptions | None = None,
+        *,
+        exclude_post_id: int | None = None,
     ) -> DailyTopic:
-        topic = await self.provider.generate(history, options)
-        used_conversation_topics = {
-            self._normalize(item.conversation_topic) for item in history
-        }
-        used_vocabulary_themes = {
-            self._normalize(item.vocabulary_theme) for item in history
-        }
-        if self._normalize(topic.title) in used_conversation_topics:
-            raise ValueError("Модель повторила уже использованную тему разговора")
-        if self._normalize(topic.vocabulary_theme) in used_vocabulary_themes:
-            raise ValueError("Модель повторила уже использованную тему лексики")
+        payload = await self.client.request(
+            "POST",
+            "/internal/bot/v1/ai-topics/generate",
+            json={
+                "options": {
+                    "jlpt_level": options.jlpt_level,
+                    "admin_comment": options.admin_comment,
+                } if options else None,
+                "exclude_publication_id": exclude_post_id,
+            },
+        )
+        topic = self._from_json(payload)
         self.renderer.render(topic)
         return topic
 
@@ -238,25 +203,34 @@ class DailyTopicService:
         scheduled_at: datetime,
         idempotency_key: str,
     ) -> int:
-        text = self.renderer.render(topic)
-        rich_message = self.renderer.rich_message(topic)
-        return await self.publications.create_scheduled(
-            creator_id=creator_id,
-            text=text,
-            target_keys=(self.target_key,),
-            scheduled_at=scheduled_at,
-            source="ai_daily_topic",
-            idempotency_key=idempotency_key,
-            rich_message=rich_message,
+        result = await self.client.request(
+            "POST",
+            "/internal/bot/v1/ai-topics/publications",
+            json={
+                "topic": topic.as_json_value(),
+                "creator_id": creator_id,
+                "scheduled_at": scheduled_at.isoformat(),
+                "source_key": idempotency_key,
+            },
         )
+        return int(result["id"])
 
     async def replace_scheduled(self, post_id: int, topic: DailyTopic) -> bool:
-        text = self.renderer.render(topic)
-        rich_message = self.renderer.rich_message(topic)
-        return await self.publications.replace_scheduled(
-            post_id, text=text, rich_message=rich_message
+        result = await self.client.request(
+            "PUT",
+            f"/internal/bot/v1/ai-topics/publications/{post_id}",
+            json={"topic": topic.as_json_value()},
         )
+        return bool(result["replaced"])
 
     @staticmethod
-    def _normalize(value: str) -> str:
-        return " ".join(value.casefold().split())
+    def _from_json(value: dict) -> DailyTopic:
+        return DailyTopic(
+            title=value["title"],
+            vocabulary_theme=value["vocabulary_theme"],
+            introduction=value["introduction"],
+            questions=tuple(value["questions"]),
+            vocabulary=tuple(VocabularyItem(**item) for item in value["vocabulary"]),
+            grammar=tuple(GrammarPoint(**item) for item in value["grammar"]),
+            jlpt_level=value["jlpt_level"],
+        )

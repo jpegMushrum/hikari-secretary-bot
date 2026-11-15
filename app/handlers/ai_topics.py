@@ -79,7 +79,7 @@ class AiTopicHandlers:
 
     def _keyboard(self, options: TopicGenerationOptions):
         return admin_ai_menu_keyboard(
-            self.service is not None,
+            bool(self.service and self.service.available),
             options.jlpt_level,
             options.admin_comment is not None,
         )
@@ -87,7 +87,7 @@ class AiTopicHandlers:
     async def _show_menu(self, send, admin_id: int) -> None:
         settings = self.context.settings.ai_topics
         options = await self.repository.preferences()
-        if self.service and settings.target:
+        if self.service and self.service.available and settings.target:
             target = settings.target.name
             state = "готов к работе"
         else:
@@ -209,7 +209,7 @@ class AiTopicHandlers:
     async def _generate(self, callback: CallbackQuery) -> None:
         if not await self.access.guard_callback(callback):
             return
-        if not self.service:
+        if not self.service or not self.service.available:
             await callback.answer("ИИ-сервис не настроен", show_alert=True)
             return
         await callback.answer("Генерирую тему…")
@@ -217,7 +217,6 @@ class AiTopicHandlers:
             "⏳ Генерирую материал. Это может занять некоторое время."
         )
         try:
-            history = await self.repository.recent_history()
             options = await self.repository.preferences()
             log.info(
                 "Manual AI generation settings: admin_id=%s jlpt=%s has_comment=%s",
@@ -225,9 +224,7 @@ class AiTopicHandlers:
                 options.jlpt_level,
                 bool(options.admin_comment),
             )
-            topic = await self.service.generate(
-                history, options,
-            )
+            topic = await self.service.generate(options)
         except Exception:
             log.exception(
                 "AI topic preview generation failed: admin_id=%s",
@@ -254,13 +251,13 @@ class AiTopicHandlers:
             "AI topic preview generated: admin_id=%s title=%r history_size=%s",
             callback.from_user.id,
             topic.title,
-            len(history),
+            "backend",
         )
 
     async def publish(self, callback: CallbackQuery) -> None:
         if not await self.access.guard_callback(callback):
             return
-        if not self.service:
+        if not self.service or not self.service.available:
             await callback.answer("ИИ-сервис не настроен", show_alert=True)
             return
         preview = self.context.state.ai_topic_previews.get(callback.from_user.id)
@@ -284,30 +281,17 @@ class AiTopicHandlers:
             await callback.answer("Не удалось поставить публикацию в очередь", show_alert=True)
             return
 
-        history_saved = True
-        try:
-            await self.repository.record_manual_publication(
-                post_id, preview.topic.as_json_value()
-            )
-        except Exception:
-            history_saved = False
-            log.exception(
-                "AI topic was scheduled but history was not saved: post_id=%s",
-                post_id,
-            )
         self.context.state.ai_topic_previews.pop(callback.from_user.id, None)
         options = await self.repository.preferences()
-        suffix = "" if history_saved else "\n⚠️ Не удалось сохранить тему в историю."
         await callback.message.edit_text(
-            f"✅ ИИ-публикация #{post_id} поставлена в очередь.{suffix}",
+            f"✅ ИИ-публикация #{post_id} поставлена в очередь.",
             reply_markup=self._keyboard(options),
         )
         await callback.answer()
         log.info(
-            "AI topic publication scheduled: admin_id=%s post_id=%s history_saved=%s",
+            "AI topic publication scheduled: admin_id=%s post_id=%s",
             callback.from_user.id,
             post_id,
-            history_saved,
         )
 
     async def queue_preview(self, callback: CallbackQuery) -> None:
@@ -368,7 +352,7 @@ class AiTopicHandlers:
         *,
         revision: str | None = None,
     ) -> None:
-        if not self.service:
+        if not self.service or not self.service.available:
             await status.edit_text("ИИ-сервис не настроен.")
             return
         post = await self.context.db.post(post_id)
@@ -390,16 +374,11 @@ class AiTopicHandlers:
                 options.jlpt_level,
                 revision is not None,
             )
-            history = await self.repository.recent_history(
-                exclude_post_id=post_id
+            topic = await self.service.generate(
+                options, exclude_post_id=post_id
             )
-            topic = await self.service.generate(history, options)
             if not await self.service.replace_scheduled(post_id, topic):
                 raise RuntimeError("Публикация больше не доступна для изменения")
-            if not await self.repository.replace_topic_for_post(
-                post_id, topic.as_json_value()
-            ):
-                raise RuntimeError("Не найдена история AI-публикации")
         except Exception:
             log.exception(
                 "Queued AI topic replacement failed: post_id=%s admin_id=%s",

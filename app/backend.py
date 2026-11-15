@@ -26,7 +26,9 @@ class BackendClient:
             self._session = aiohttp.ClientSession(
                 base_url=self.base_url,
                 headers={"Authorization": f"Bearer {self.service_token}"},
-                timeout=aiohttp.ClientTimeout(total=15),
+                # AI generation is intentionally synchronous from the admin's
+                # point of view and may take longer than ordinary CRUD calls.
+                timeout=aiohttp.ClientTimeout(total=120),
             )
         return self._session
 
@@ -536,6 +538,17 @@ class BackendDatabase:
 
     async def mark_notified(self, post_id: int) -> None:
         await self.client.request("POST", f"/internal/bot/v1/publication-notifications/{post_id}/sent")
+
+    async def ai_failure_notifications(self) -> list[dict]:
+        return await self.client.request(
+            "GET", "/internal/bot/v1/ai-topics/failure-notifications"
+        )
+
+    async def mark_ai_failure_notified(self, job_id: int) -> None:
+        await self.client.request(
+            "POST",
+            f"/internal/bot/v1/ai-topics/failure-notifications/{job_id}/sent",
+        )
 
     @staticmethod
     def _page(payload: dict) -> Page:

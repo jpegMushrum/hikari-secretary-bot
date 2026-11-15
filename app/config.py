@@ -46,10 +46,6 @@ class Settings:
     scheduler_interval_seconds: int
     max_delivery_attempts: int
     reminder_options_minutes: tuple[int, ...]
-    deepseek_api_key: str | None
-    deepseek_model: str
-    deepseek_base_url: str
-    deepseek_timeout_seconds: int
     ai_topics: AiTopicSettings
     backend_url: str | None
     backend_service_token: str | None
@@ -137,11 +133,6 @@ def load_settings() -> Settings:
         raise ValueError(
             f"AI_TOPIC_TARGET_KEY ссылается на неизвестную цель: {target_key}"
         )
-    deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "").strip() or None
-    if deepseek_api_key and ai_target is None:
-        raise ValueError(
-            "При заданном DEEPSEEK_API_KEY необходимо указать AI_TOPIC_TARGET_KEY"
-        )
     auto_publish_raw = os.getenv("AI_TOPIC_AUTO_PUBLISH_TIME", "").strip()
     try:
         auto_publish_time = (
@@ -152,10 +143,6 @@ def load_settings() -> Settings:
         raise ValueError(
             "AI_TOPIC_AUTO_PUBLISH_TIME должен быть в формате ЧЧ:ММ"
         ) from exc
-    if auto_publish_time and not deepseek_api_key:
-        raise ValueError(
-            "Для автоматической публикации необходимо задать DEEPSEEK_API_KEY"
-        )
 
     backend_url = os.getenv("BACKEND_URL", "").strip().rstrip("/") or None
     backend_service_token = os.getenv("BOT_SERVICE_TOKEN", "").strip() or None
@@ -183,14 +170,6 @@ def load_settings() -> Settings:
         scheduler_interval_seconds=max(1, int(os.getenv("SCHEDULER_INTERVAL_SECONDS", "5"))),
         max_delivery_attempts=max(1, int(os.getenv("MAX_DELIVERY_ATTEMPTS", "5"))),
         reminder_options_minutes=reminder_options,
-        deepseek_api_key=deepseek_api_key,
-        deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-flash").strip(),
-        deepseek_base_url=os.getenv(
-            "DEEPSEEK_BASE_URL", "https://api.deepseek.com"
-        ).strip().rstrip("/"),
-        deepseek_timeout_seconds=max(
-            1, int(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "90"))
-        ),
         ai_topics=AiTopicSettings(
             target=ai_target,
             auto_publish_time=auto_publish_time,

@@ -27,10 +27,8 @@ from .runtime import AppContext
 from .services.publications import PublicationService
 from .services.daily_topics import DailyTopicService
 from .repositories.daily_topics import DailyTopicRepository
-from .integrations.deepseek import DeepSeekTopicProvider
 from .workers.scheduler import SchedulerWorker
 from .workers.base import BackgroundWorker
-from .workers.daily_topics import DailyTopicPlannerWorker, DailyTopicWorker
 
 log = logging.getLogger(__name__)
 
@@ -54,12 +52,9 @@ class SecretaryBot:
         publication_service = PublicationService(database, settings.targets)
         topic_repository = DailyTopicRepository(database.client)
         topic_service: DailyTopicService | None = None
-        if settings.deepseek_api_key and settings.ai_topics.target:
-            topic_service = DailyTopicService(
-                DeepSeekTopicProvider.from_settings(settings),
-                publication_service,
-                settings.ai_topics.target.key,
-            )
+        if settings.ai_topics.target:
+            topic_service = DailyTopicService(database.client)
+        self.topic_service = topic_service
         registrations = RegistrationHandlers(self.context, access)
         publications = PublicationHandlers(
             self.context, access, publication_service
@@ -78,22 +73,6 @@ class SecretaryBot:
         inbox.register(self.router)
 
         workers: list[BackgroundWorker] = [SchedulerWorker(self.context)]
-        if topic_service and settings.ai_topics.auto_publish_time:
-            workers.extend((
-                DailyTopicPlannerWorker(
-                    topic_repository,
-                    publish_time=settings.ai_topics.auto_publish_time,
-                    timezone_value=settings.timezone,
-                ),
-                DailyTopicWorker(
-                    topic_repository,
-                    topic_service,
-                    creator_id=min(settings.admin_ids),
-                    bot=bot,
-                    admin_ids=settings.admin_ids,
-                    timezone_value=settings.timezone,
-                ),
-            ))
         self.workers = tuple(workers)
         self.dispatcher.update.outer_middleware(UpdateLoggingMiddleware())
         self.dispatcher.include_router(self.router)
@@ -116,6 +95,8 @@ class SecretaryBot:
             self.settings.backend_url,
         )
         await self.db.initialize()
+        if self.topic_service:
+            await self.topic_service.refresh_capabilities()
         me = await self.bot.get_me()
         self.context.bot_username = me.username
         await self._configure_telegram_menu()

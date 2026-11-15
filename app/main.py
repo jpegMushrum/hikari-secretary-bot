@@ -27,9 +27,8 @@ def main() -> None:
         settings.backend_url,
     )
     log.info(
-        "AI topic configuration: enabled=%s target=%s auto_publish_time=%s questions=%s "
+        "AI topic UI configuration: target=%s auto_publish_time=%s questions=%s "
         "vocabulary=%s grammar=%s",
-        bool(settings.deepseek_api_key),
         settings.ai_topics.target.key if settings.ai_topics.target else None,
         settings.ai_topics.auto_publish_time.strftime("%H:%M")
         if settings.ai_topics.auto_publish_time else None,

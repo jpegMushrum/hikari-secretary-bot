@@ -36,6 +36,7 @@ class SchedulerWorker:
                 await self._send_due_reminders()
                 await self._send_due_attendance_prompts()
                 await self._send_terminal_notifications()
+                await self._send_ai_failure_notifications()
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -183,3 +184,24 @@ class SchedulerWorker:
             await self.context.bot.send_message(admin_id, text)
         except Exception:
             log.exception("Could not send delivery status to admin %s", admin_id)
+
+    async def _send_ai_failure_notifications(self) -> None:
+        for notice in await self.context.db.ai_failure_notifications():
+            text = (
+                "❌ Не удалось подготовить автоматическую ИИ-публикацию "
+                f"после {notice['attempts']} попыток.\n"
+                f"Причина: {notice['error'][:500]}"
+            )
+            delivered = False
+            for admin_id in self.context.settings.admin_ids:
+                try:
+                    await self.context.bot.send_message(admin_id, text)
+                    delivered = True
+                except Exception:
+                    log.exception(
+                        "Could not notify admin %s about failed AI job %s",
+                        admin_id,
+                        notice["id"],
+                    )
+            if delivered:
+                await self.context.db.mark_ai_failure_notified(notice["id"])
