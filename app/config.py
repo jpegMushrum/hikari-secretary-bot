@@ -7,6 +7,7 @@ from datetime import datetime, time
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from urllib.parse import urlsplit
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +50,8 @@ class Settings:
     ai_topics: AiTopicSettings
     backend_url: str | None
     backend_service_token: str | None
+    miniapp_url: str | None = None
+    background_workers_enabled: bool = True
 
 
 def _required(name: str) -> str:
@@ -92,6 +95,11 @@ def _load_targets(path: Path) -> tuple[Target, ...]:
 
 
 def load_settings() -> Settings:
+    miniapp_url = os.getenv("MINIAPP_URL", "").strip().rstrip("/") or None
+    if miniapp_url:
+        parsed = urlsplit(miniapp_url)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.path or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("MINIAPP_URL должен быть HTTPS URL без query, fragment и учётных данных")
     admin_ids_raw = _required("ADMIN_IDS")
     try:
         admin_ids = frozenset(int(value.strip()) for value in admin_ids_raw.split(",") if value.strip())
@@ -179,4 +187,6 @@ def load_settings() -> Settings:
         ),
         backend_url=backend_url,
         backend_service_token=backend_service_token,
+        miniapp_url=miniapp_url,
+        background_workers_enabled=os.getenv("BOT_BACKGROUND_WORKERS_ENABLED", "true").lower() == "true",
     )

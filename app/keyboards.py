@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from .config import Settings
 from .presentation import event_title, reminder_offset_label
@@ -14,6 +14,8 @@ def draft_keyboard(
     event_limit_reached: bool = False,
 ) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
+    if url := getattr(settings, "miniapp_url", None):
+        rows.append([InlineKeyboardButton(text="Продолжить в панели", web_app=WebAppInfo(url=f"{url}/admin/publications/{post_id}"))])
     for target in settings.targets:
         mark = "✅" if target.key in selected else "⬜"
         rows.append([InlineKeyboardButton(

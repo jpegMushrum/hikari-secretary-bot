@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from ..formatting import format_local
 from ..keyboards import attendance_keyboard, registration_cancel_keyboard
-from ..presentation import event_title, friendly_delivery_error, remove_media
+from ..presentation import event_title, friendly_delivery_error
 from ..publishers import TelegramPublisher
 from ..runtime import AppContext
 
@@ -184,9 +184,7 @@ class SchedulerWorker:
             try:
                 await self.context.bot.send_message(notice["creator_id"], "\n".join(lines))
                 await self.context.db.mark_notified(notice["id"])
-                post = await self.context.db.post(notice["id"])
-                if post and post.get("source") != "miniapp":
-                    remove_media(post["media_paths"])
+                # Shared publication previews retain media after delivery.
             except (TelegramBadRequest, TelegramForbiddenError) as error:
                 # This notification cannot be delivered: the recipient may no
                 # longer have a private chat with this bot. It is terminal,

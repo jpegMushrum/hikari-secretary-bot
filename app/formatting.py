@@ -111,6 +111,23 @@ def rich_message_preview(item: dict | None) -> str:
     return "\n".join(parts)
 
 
+def rich_photos(item: dict | None) -> list[dict]:
+    """Ordered photo blocks; matches the read-only miniapp preview traversal."""
+    photos: list[dict] = []
+    def visit(value):
+        if isinstance(value, list):
+            for child in value:
+                visit(child)
+        elif isinstance(value, dict):
+            if value.get("type") == "photo" and isinstance(value.get("photo"), list) and value["photo"]:
+                photos.append(max(value["photo"], key=lambda p: (p.get("width", 0) * p.get("height", 0), p.get("file_size", 0))))
+            for key in ("blocks", "items"):
+                if key in value:
+                    visit(value[key])
+    visit(item)
+    return photos
+
+
 def parse_schedule(value: str, local_tz: ZoneInfo, now: datetime | None = None) -> datetime:
     clean = " ".join(value.strip().split())
     local_now = (now or datetime.now(timezone.utc)).astimezone(local_tz)

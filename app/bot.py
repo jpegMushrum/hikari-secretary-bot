@@ -108,7 +108,7 @@ class SecretaryBot:
         )
         worker_tasks = [
             asyncio.create_task(worker.run(), name=f"worker:{worker.name}")
-            for worker in self.workers
+            for worker in self.workers if self.settings.background_workers_enabled
         ]
         try:
             await self.dispatcher.start_polling(

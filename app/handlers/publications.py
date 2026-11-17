@@ -18,6 +18,7 @@ from ..formatting import (
     rich_message_from_json,
     rich_message_preview,
     rich_message_to_json,
+    rich_photos,
 )
 from ..keyboards import draft_keyboard, queue_cancel_keyboard
 from ..presentation import remove_media
@@ -225,6 +226,20 @@ class PublicationHandlers:
         text = rich_message_preview(rich_message) if rich_message else (lead.text or lead.caption or "")
         entities = [] if rich_message else entities_to_json(lead.entities or lead.caption_entities)
         media_paths = [await self._download_photo(item) for item in messages if item.photo]
+        if rich_message:
+            # Original rich_message (including Telegram file IDs) stays untouched.
+            # These files are preview assets; rich delivery still uses sendRichMessage.
+            media_paths = []
+            try:
+                for photo in rich_photos(rich_message):
+                    path = self.context.settings.media_dir / f"{uuid.uuid4().hex}.jpg"
+                    media_paths.append(str(path))
+                    await self.context.bot.download(photo["file_id"], destination=path)
+            except Exception:
+                # A preview download must not break the established Telegram flow.
+                remove_media(media_paths)
+                media_paths = []
+                log.warning("Rich photo preview unavailable; original content retained")
         post_id = await self.service.create_draft(
             lead.from_user.id, text, entities, media_paths, rich_message
         )
@@ -380,8 +395,7 @@ class PublicationHandlers:
         self.context.state.awaiting_event.pop(callback.from_user.id, None)
         post = await self.context.db.post(post_id)
         if await self.context.db.cancel(post_id):
-            if post:
-                remove_media(post["media_paths"])
+            # Retain assets for the shared publication history/preview.
             await callback.message.edit_text(f"Публикация #{post_id} отменена.")
         else:
             await callback.answer("Публикацию уже нельзя отменить", show_alert=True)
