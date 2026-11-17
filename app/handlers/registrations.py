@@ -535,8 +535,8 @@ class RegistrationHandlers:
                     participant["user_id"], post_id,
                 )
         await callback.message.edit_text(
-            f"Мероприятие #{post_id} отменено. Уведомлено участников: "
-            f"{notified} из {len(participants)}."
+            f"Мероприятие #{post_id} отменено. Уведомления участникам "
+            "будут отправлены автоматически."
         )
         await callback.answer()
 

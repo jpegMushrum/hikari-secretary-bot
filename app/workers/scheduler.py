@@ -185,7 +185,7 @@ class SchedulerWorker:
                 await self.context.bot.send_message(notice["creator_id"], "\n".join(lines))
                 await self.context.db.mark_notified(notice["id"])
                 post = await self.context.db.post(notice["id"])
-                if post:
+                if post and post.get("source") != "miniapp":
                     remove_media(post["media_paths"])
             except (TelegramBadRequest, TelegramForbiddenError) as error:
                 # This notification cannot be delivered: the recipient may no
