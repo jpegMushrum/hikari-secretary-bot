@@ -13,12 +13,10 @@ Telegram-секретарь клуба японского языка **Hikari IT
 
 > Текущая версия: **v0.9.0** · Статус: **beta**
 
-> Пока `bot/` ещё обычный каталог родительского репозитория, рабочие `.env`,
-> `targets.json` и `data/` остаются уровнем выше. Запускайте его из корня:
-> `docker compose -f bot/docker-compose.yml up -d --build`. После выделения в
-> самостоятельный репозиторий передайте пути через `BOT_ENV_FILE`,
-> `BOT_DATA_DIR` и `BOT_TARGETS_FILE` либо используйте будущий интеграционный
-> Compose в корне платформы.
+> Бот — сабмодуль интеграционного репозитория. Запускайте из его корня:
+> `docker compose -f docker-compose.bot-local.yml up -d --build` локально,
+> либо `docker compose -f docker-compose.production.yml up -d --build` на сервере.
+> Рабочие `.env`, `targets.json` и `data/` находятся в корне платформы.
 
 ## Что умеет
 

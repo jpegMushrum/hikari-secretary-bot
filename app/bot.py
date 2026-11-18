@@ -15,6 +15,7 @@ from aiogram.types import (
 )
 
 from .access import AdminAccess
+from .miniapp_menu import configure_personal_menus
 from .backend import BackendClient, BackendDatabase, BackendError
 from .config import Settings
 from .handlers.core import CoreHandlers
@@ -166,6 +167,7 @@ class SecretaryBot:
             user_commands, scope=BotCommandScopeAllPrivateChats()
         )
         await self.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+        await configure_personal_menus(self.bot, self.settings)
         for admin_id in self.settings.admin_ids:
             try:
                 await self.bot.set_my_commands(

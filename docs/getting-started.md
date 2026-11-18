@@ -1,146 +1,43 @@
-# Быстрый старт
+# Запуск бота
 
-Пока бот находится в каталоге `bot/` родительского репозитория, рабочие
-`.env`, `targets.json` и `data/` сохраняются в его корне. Все команды Compose
-ниже выполняйте из корня платформы с явным файлом:
+Бот запускается из корня интеграционного репозитория вместе с Go backend.
+Остались два самостоятельных Compose-файла; смешивать их не нужно.
 
-```bash
-docker compose -f bot/docker-compose.yml <команда>
+## Локальная разработка
+
+Корневой `.env` содержит токен тестового бота и ADMIN_IDS, `targets.json` —
+тестовые цели. База-копия уже подготовлена на текущей машине;
+`LOCAL_DATABASE_NAME` выбирает имя базы, по умолчанию `hikari_bot_local_20261117`.
+На новой машине сначала восстановите копию PostgreSQL, как описано в
+`miniapp/README.md`. Автоматический импорт SQLite здесь не выполняется.
+
+```sh
+docker compose -f docker-compose.bot-local.yml up -d --build
+docker compose -f docker-compose.bot-local.yml ps
+docker compose -f docker-compose.bot-local.yml logs -f bot
 ```
 
-Этот Compose по умолчанию берёт конфигурацию из `../.env`, `../targets.json` и
-`../data`. После выделения `bot/` в отдельный репозиторий передайте свои пути
-через `BOT_ENV_FILE`, `BOT_TARGETS_FILE` и `BOT_DATA_DIR`, например
-`BOT_ENV_FILE=.env BOT_TARGETS_FILE=./targets.json BOT_DATA_DIR=./data`.
+Miniapp доступен на localhost:5173. Workers включены: публикации реально
+отправляются. Production-токен для этого стенда не используйте.
 
-## Требования
+## Сервер
 
-- Docker Engine и Docker Compose;
-- Telegram-бот, созданный через [@BotFather](https://t.me/BotFather);
-- числовые Telegram ID администраторов;
-- права бота на публикацию в целевых каналах и чатах.
+Порядок подготовки `.env`, `backend/.env`, целей, сертификата и перехода
+с SQLite описан в `docs/production.md` корневого репозитория.
 
-Для AI-материалов дополнительно нужен ключ DeepSeek. Без него остальные функции
-бота работают как обычно.
-
-## Первичная настройка
-
-Скопируйте примеры конфигурации:
-
-```bash
-cp .env.example .env
-cp targets.example.json targets.json
+```sh
+docker compose -f docker-compose.production.yml up -d --build
+docker compose -f docker-compose.production.yml logs -f bot
 ```
 
-В `.env` обязательно укажите:
+Новый бот работает только через backend; миграции изменяют PostgreSQL.
+SQLite используется как источник одноразового импорта и сохраняется.
+Не запускайте одновременно старого и нового бота с одним токеном.
 
-```dotenv
-TELEGRAM_BOT_TOKEN=...
-ADMIN_IDS=111111111,222222222
-TIMEZONE=Europe/Moscow
-```
+## Остановка и обновление
 
-Чтобы включить backend-владение профилями, мероприятиями, регистрациями,
-посещаемостью и отзывами, добавьте в тот же `.env` параметры из варианта ниже.
-
-Если backend и bot запускаются отдельными Compose-проектами, как в текущей
-структуре репозитория, на Docker Desktop укажите адрес опубликованного порта
-backend:
-
-```dotenv
-BACKEND_URL=http://host.docker.internal:8080
-BOT_SERVICE_TOKEN=тот_же_секрет_что_и_в_backend
-```
-
-Если позже оба сервиса будут подключены к одной Docker-сети интеграционного
-Compose, адресом будет `http://backend:8080`.
-
-Оба значения должны быть заданы вместе. Перед переключением остановите бота,
-запустите мигратор backend и выполните read-only dry-run, затем примените
-перенос с явным `--apply`. SQLite остаётся рабочей для публикаций, media,
-delivery, AI-истории и временных диалогов.
-
-Остальные параметры имеют безопасные значения по умолчанию. Не добавляйте `.env`
-в Git: в нём находится токен Telegram-бота и, при включении AI, ключ DeepSeek.
-
-Настройте хотя бы одну цель публикации в `targets.json`. Подробный формат и
-получение идентификаторов описаны в [руководстве по Telegram ID](telegram-ids.md).
-
-## Первый запуск
-
-Для запуска backend и bot в общей Docker-сети используйте корневой Compose из
-родительского репозитория:
-
-```bash
-docker compose up -d --build --remove-orphans
-```
-
-Он сам дождётся миграций SQLite и PostgreSQL, выполнит идемпотентный импорт и
-запустит bot только после успешной проверки backend. Отдельный Compose ниже
-нужен для автономного запуска только bot.
-
-```bash
-docker compose -f bot/docker-compose.yml up -d --build
-```
-
-При включённом backend сначала поднимите его отдельным Compose и убедитесь, что
-`GET /healthz` и `GET /readyz` возвращают `200`, после чего пересоберите bot.
-
-Из корня платформы это выглядит так:
-
-```bash
-docker compose -f backend/docker-compose.yml --env-file backend/.env up -d --build
-curl http://127.0.0.1:8080/healthz
-curl http://127.0.0.1:8080/readyz
-docker compose -f bot/docker-compose.yml up -d --build
-```
-
-Если backend ещё пустой, выполните его импортёр до запуска bot:
-
-```bash
-cd backend
-go run ./cmd/import-legacy --sqlite ../data/bot.sqlite3 --json
-go run ./cmd/import-legacy --sqlite ../data/bot.sqlite3 --apply --database-url "$DATABASE_URL"
-cd ..
-```
-
-На Windows PowerShell вместо `$DATABASE_URL` можно указать тот же URL явно из
-`backend/.env`.
-
-Compose сначала выполняет одноразовый контейнер `migrate`. Он применяет
-недостающие миграции SQLite; для существующей базы до миграции создаётся копия в
-`data/backups`. Контейнер `bot` запустится только после успешного завершения
-мигратора.
-
-Проверьте состояние и логи:
-
-```bash
-docker compose -f bot/docker-compose.yml ps
-docker compose -f bot/docker-compose.yml logs -f bot
-```
-
-## Обновление
-
-Перед обновлением production-экземпляра создайте резервную копию папки `data/`.
-Затем получите новую версию кода и пересоберите контейнеры:
-
-```bash
-git pull
-docker compose -f bot/docker-compose.yml up -d --build
-```
-
-Контейнер миграций применит только версии схемы, которых ещё нет в базе. Он не
-должен удалять исторические публикации, профили, регистрации, отзывы или
-настройки AI.
-
-## Данные и остановка
-
-Папка `data/` содержит SQLite-базу, резервные копии миграций и загруженные
-изображения. Её необходимо включать в резервное копирование сервера.
-
-```bash
-docker compose -f bot/docker-compose.yml down
-```
-
-Не запускайте два экземпляра бота с одной SQLite-базой: SQLite в этом проекте
-рассчитана на один работающий экземпляр.
+Используйте тот же файл, которым запускали стенд. `stop bot` останавливает
+только бота; `down` останавливает весь проект и сохраняет volumes.
+Не добавляйте `-v`: в volumes хранятся PostgreSQL и снимок для импорта.
+Перед обновлением сохраните базу, медиа и конфигурацию; затем пересоберите
+стек командой `up -d --build` с соответствующим `-f`.

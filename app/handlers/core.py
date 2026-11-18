@@ -5,6 +5,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
 
 from ..access import AdminAccess
+from ..miniapp_menu import set_personal_menu
 from ..keyboards import (
     admin_events_menu_keyboard,
     admin_menu_keyboard,
@@ -42,6 +43,7 @@ class CoreHandlers:
     async def start(self, message: Message) -> None:
         if not message.from_user or message.chat.type != "private":
             return
+        await set_personal_menu(self.context.bot, self.context.settings, message.from_user.id)
         payload = (message.text or "").partition(" ")[2].strip()
         if payload.startswith("event_") and payload[6:].isdigit():
             await self.registrations.begin_registration(

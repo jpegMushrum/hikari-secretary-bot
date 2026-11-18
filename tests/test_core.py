@@ -124,7 +124,8 @@ class TelegramMenuTests(unittest.TestCase):
         self.assertIn("statistics", commands)
         for call in bot.set_my_commands.await_args_list:
             self.assertEqual(call.args[0][0].command, "start")
-        bot.set_chat_menu_button.assert_awaited_once()
+        self.assertEqual(bot.set_chat_menu_button.await_count, 2)
+        self.assertEqual(bot.set_chat_menu_button.await_args.kwargs['menu_button'].type, 'commands')
 
 
 if __name__ == "__main__":

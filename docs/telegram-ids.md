@@ -34,7 +34,7 @@
 Утилита определяет публичные цели по `@username` или ссылке:
 
 ```bash
-docker compose run --rm bot python -m app.resolve_ids --telegram \
+docker compose -f docker-compose.production.yml run --rm bot python -m app.resolve_ids --telegram \
   @channel_name https://t.me/group_name
 ```
 
@@ -44,8 +44,8 @@ docker compose run --rm bot python -m app.resolve_ids --telegram \
 одновременно с утилитой:
 
 ```bash
-docker compose stop bot
-docker compose run --rm bot python -m app.resolve_ids --listen
+docker compose -f docker-compose.production.yml stop bot
+docker compose -f docker-compose.production.yml run --rm bot python -m app.resolve_ids --listen
 ```
 
 Затем:
@@ -60,5 +60,5 @@ docker compose run --rm bot python -m app.resolve_ids --listen
 Завершите утилиту `Ctrl+C`, затем верните основной бот:
 
 ```bash
-docker compose up -d bot
+docker compose -f docker-compose.production.yml up -d bot
 ```
