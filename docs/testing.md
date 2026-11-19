@@ -1,27 +1,29 @@
 # Проверки
 
-Полный набор тестов запускается в контейнере, без доступа к рабочей базе и
-реальным Telegram API:
+Из каталога бота с установленными зависимостями:
 
-```bash
-docker compose -f docker-compose.bot-local.yml run --rm --no-deps -v "${PWD}/bot:/app" bot \
-  python -m unittest discover -s tests -v
+```sh
+python -m unittest discover -s tests -v
 ```
 
-Тесты покрывают публикации и очередь доставки, регистрации,
-посещаемость, отзывы, административные таблицы, AI-очередь и обработку ошибок
-DeepSeek.
+В Docker из корня интеграционного репозитория:
 
-Перед изменением или выпуском также проверьте конфигурацию Compose:
+```sh
+docker compose -f docker-compose.bot-local.yml run --rm --no-deps --build -v "${PWD}/bot/tests:/app/tests:ro" bot python -m unittest discover -s tests -v
+```
 
-```bash
+Команда запускает тесты вместо Telegram polling. Тесты подменяют обращения
+к Telegram и backend, проверяют диалоги, контракт внутреннего API, обработку
+медиа, доставку и уведомления, передачу черновиков в miniapp и работу меню ИИ.
+Подключение к DeepSeek и работа генератора относятся к проверкам backend.
+
+Для проверки конфигурации или сборки используйте Compose-файл нужного стенда:
+
+```sh
 docker compose -f docker-compose.bot-local.yml config --quiet
 docker compose -f docker-compose.bot-local.yml build backend bot
 ```
 
-После развёртывания просмотрите состояние контейнеров и последние логи:
-
-```bash
-docker compose -f docker-compose.bot-local.yml ps
-docker compose -f docker-compose.bot-local.yml logs --tail=100 bot
-```
+После развёртывания состояние и журналы доступны через `ps` и
+`logs --tail=100 bot`. Диалоги и Web App в настоящем Telegram требуют
+отдельной ручной проверки.

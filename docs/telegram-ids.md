@@ -1,5 +1,8 @@
 # Telegram ID и топики
 
+Выполняйте команды из корня интеграционного репозитория с Compose-файлом
+нужного стенда. В примерах используется production-файл.
+
 Каждая цель в `targets.json` получает понятный `key`, название и Telegram
 идентификатор. Для публичного канала можно использовать `@username`, для чата
 или приватного канала — числовой `chat_id`.
@@ -34,8 +37,7 @@
 Утилита определяет публичные цели по `@username` или ссылке:
 
 ```bash
-docker compose -f docker-compose.production.yml run --rm bot python -m app.resolve_ids --telegram \
-  @channel_name https://t.me/group_name
+docker compose -f docker-compose.production.yml run --rm --no-deps bot python -m app.resolve_ids --telegram @channel_name https://t.me/group_name
 ```
 
 ## Приватные чаты, каналы и топики
@@ -45,7 +47,7 @@ docker compose -f docker-compose.production.yml run --rm bot python -m app.resol
 
 ```bash
 docker compose -f docker-compose.production.yml stop bot
-docker compose -f docker-compose.production.yml run --rm bot python -m app.resolve_ids --listen
+docker compose -f docker-compose.production.yml run --rm --no-deps bot python -m app.resolve_ids --listen
 ```
 
 Затем:
