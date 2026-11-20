@@ -26,7 +26,8 @@ docker compose -f docker-compose.bot-local.yml logs -f bot
 
 Miniapp доступен на [localhost:5173](http://localhost:5173). Бот запускается
 с включённой фоновой доставкой и отправляет сообщения в заданные цели.
-Compose отключает открытие miniapp из Telegram и генерацию тем ИИ.
+Compose отключает открытие miniapp из Telegram. Для генерации тем ИИ
+задайте ключ DeepSeek и тестовую цель по [руководству по ИИ-материалам](ai-materials.md).
 
 ## Production
 
